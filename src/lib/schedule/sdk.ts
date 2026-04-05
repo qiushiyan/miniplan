@@ -1,23 +1,41 @@
 import type { Activity, Schedule } from "./types";
+import { runCPM } from "./cpm";
 
 /**
  * Creates SDK function bindings that operate on a mutable schedule clone.
  * These functions are injected into the `new Function()` scope during code execution.
+ *
+ * After each mutating call, CPM is recomputed and derived state (maps, critical path)
+ * is rebuilt so that subsequent reads in the same execution block see fresh data.
  */
 export function createSdkBindings(schedule: Schedule) {
-  const activityMap = new Map(schedule.activities.map((a) => [a.id, a]));
+  let activityMap = new Map(schedule.activities.map((a) => [a.id, a]));
+  let predecessorMap = new Map<string, string[]>();
+  let successorMap = new Map<string, string[]>();
 
-  // Build predecessor/successor maps
-  const predecessorMap = new Map<string, string[]>();
-  const successorMap = new Map<string, string[]>();
-  for (const a of schedule.activities) {
-    predecessorMap.set(a.id, []);
-    successorMap.set(a.id, []);
+  function rebuildDerivedState() {
+    // Recompute CPM in place — mutates schedule.activities, .projectDuration, .criticalPath
+    const updated = runCPM(schedule);
+    schedule.activities = updated.activities;
+    schedule.projectDuration = updated.projectDuration;
+    schedule.criticalPath = updated.criticalPath;
+
+    // Rebuild maps
+    activityMap = new Map(schedule.activities.map((a) => [a.id, a]));
+    predecessorMap = new Map<string, string[]>();
+    successorMap = new Map<string, string[]>();
+    for (const a of schedule.activities) {
+      predecessorMap.set(a.id, []);
+      successorMap.set(a.id, []);
+    }
+    for (const dep of schedule.dependencies) {
+      predecessorMap.get(dep.toId)?.push(dep.fromId);
+      successorMap.get(dep.fromId)?.push(dep.toId);
+    }
   }
-  for (const dep of schedule.dependencies) {
-    predecessorMap.get(dep.toId)?.push(dep.fromId);
-    successorMap.get(dep.fromId)?.push(dep.toId);
-  }
+
+  // Initial build
+  rebuildDerivedState();
 
   // --- Reading functions ---
 
@@ -59,7 +77,7 @@ export function createSdkBindings(schedule: Schedule) {
     return a.float;
   }
 
-  // --- Modifying functions (mutate the clone in place) ---
+  // --- Modifying functions (mutate + recompute) ---
 
   function setActivityDuration(
     activityId: string,
@@ -68,8 +86,10 @@ export function createSdkBindings(schedule: Schedule) {
   ): void {
     const a = activityMap.get(activityId);
     if (!a) throw new Error(`Activity '${activityId}' not found`);
-    if (duration <= 0) throw new Error(`Duration must be positive, got ${duration}`);
+    if (duration <= 0)
+      throw new Error(`Duration must be positive, got ${duration}`);
     a.duration = duration;
+    rebuildDerivedState();
   }
 
   function createDependency(
@@ -91,6 +111,7 @@ export function createSdkBindings(schedule: Schedule) {
       );
 
     schedule.dependencies.push({ fromId, toId, type: "FINISH_TO_START" });
+    rebuildDerivedState();
   }
 
   function removeDependency(fromId: string, toId: string): void {
@@ -102,6 +123,7 @@ export function createSdkBindings(schedule: Schedule) {
         `Dependency from '${fromId}' to '${toId}' not found`
       );
     schedule.dependencies.splice(idx, 1);
+    rebuildDerivedState();
   }
 
   function applyDateConstraint(
@@ -112,6 +134,7 @@ export function createSdkBindings(schedule: Schedule) {
     if (!activityMap.has(activityId))
       throw new Error(`Activity '${activityId}' not found`);
     schedule.constraints.push({ activityId, day, type });
+    rebuildDerivedState();
   }
 
   return {

@@ -73,10 +73,18 @@ export function AONDiagram({ schedule }: { schedule: Schedule | null }) {
       },
     }));
 
-    // Build edges
+    // Build edges — an edge is critical only if both nodes are on the critical path
+    // AND the dependency is tight (source finishes exactly when target starts)
+    const actMap = new Map(schedule.activities.map((a) => [a.id, a]));
     const rawEdges: Edge[] = schedule.dependencies.map((dep) => {
+      const source = actMap.get(dep.fromId);
+      const target = actMap.get(dep.toId);
       const isCriticalEdge =
-        criticalSet.has(dep.fromId) && criticalSet.has(dep.toId);
+        criticalSet.has(dep.fromId) &&
+        criticalSet.has(dep.toId) &&
+        source != null &&
+        target != null &&
+        source.ef === target.es;
       return {
         id: `${dep.fromId}-${dep.toId}`,
         source: dep.fromId,

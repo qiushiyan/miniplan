@@ -4,8 +4,10 @@ import {
   getCurrentSchedule,
   commit,
   undo,
+  setPipelineRun,
   type Schedule,
   type ExecutionArtifact,
+  type PipelineRun,
 } from "../schedule";
 import { validate } from "../schedule/validation";
 import { cloneSchedule } from "../schedule/engine";
@@ -129,7 +131,7 @@ export const scheduleTools = {
         .optional()
         .describe("IDs of activities affected by the operation"),
       parameters: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe("Operation parameters (e.g., new duration, constraint day)"),
       summary: z
@@ -253,6 +255,17 @@ export const scheduleTools = {
         criticalPathAfter: after.criticalPath,
         changedActivities,
       };
+
+      // Persist pipeline run for eval readiness
+      const pipelineRun: PipelineRun = {
+        userMessage: code,
+        scheduleBefore: cloneSchedule(before),
+        intent: null,
+        code: { code, description: "", sdkCalls: [] },
+        execution: artifact,
+        scheduleAfter: cloneSchedule(after),
+      };
+      setPipelineRun(pipelineRun);
 
       return {
         success: true,

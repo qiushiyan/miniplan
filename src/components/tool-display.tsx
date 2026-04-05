@@ -17,12 +17,10 @@ import {
 } from "@/components/ai-elements/code-block";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { isToolUIPart } from "ai";
-import type { Schedule } from "@/lib/schedule/types";
 
 type ToolPartProps = {
   // biome-ignore lint/suspicious/noExplicitAny: tool parts have dynamic types
   part: any;
-  onScheduleUpdate?: (schedule: Schedule) => void;
 };
 
 function ScheduleSnapshotTool({ part }: ToolPartProps) {
@@ -32,6 +30,7 @@ function ScheduleSnapshotTool({ part }: ToolPartProps) {
       <ToolContent>
         {part.state === "output-available" && part.output && (
           <ToolOutput
+            errorText={undefined}
             output={
               <div className="text-xs text-muted-foreground">
                 {part.output.activities?.length ?? 0} activities,{" "}
@@ -139,14 +138,8 @@ function GenerateCodeTool({ part }: ToolPartProps) {
   );
 }
 
-function ExecuteCodeTool({ part, onScheduleUpdate }: ToolPartProps) {
+function ExecuteCodeTool({ part }: ToolPartProps) {
   const output = part.state === "output-available" ? part.output : null;
-
-  // Update schedule state when execution succeeds
-  if (output?.success && output?.schedule && onScheduleUpdate) {
-    // Schedule the update to avoid calling during render
-    queueMicrotask(() => onScheduleUpdate(output.schedule));
-  }
 
   return (
     <Tool defaultOpen={true}>
@@ -177,12 +170,8 @@ function ExecuteCodeTool({ part, onScheduleUpdate }: ToolPartProps) {
   );
 }
 
-function UndoTool({ part, onScheduleUpdate }: ToolPartProps) {
+function UndoTool({ part }: ToolPartProps) {
   const output = part.state === "output-available" ? part.output : null;
-
-  if (output?.success && output?.schedule && onScheduleUpdate) {
-    queueMicrotask(() => onScheduleUpdate(output.schedule));
-  }
 
   return (
     <Tool>
@@ -194,6 +183,7 @@ function UndoTool({ part, onScheduleUpdate }: ToolPartProps) {
       <ToolContent>
         {output && (
           <ToolOutput
+            errorText={undefined}
             output={
               <div className="text-sm text-muted-foreground">
                 {output.success ? "Change reverted." : "Nothing to undo."}
@@ -247,29 +237,29 @@ function formatExecutionResult(artifact: any): string {
   return lines.length > 0 ? lines.join("\n") : "Change applied successfully.";
 }
 
-export function ToolPartRenderer({
-  part,
-  onScheduleUpdate,
-}: ToolPartProps) {
+export function ToolPartRenderer({ part }: ToolPartProps) {
   if (!isToolUIPart(part)) return null;
 
-  switch (part.toolName) {
-    case "getScheduleSnapshot":
+  // In AI SDK v6, typed tool parts use type "tool-{toolName}"
+  switch (part.type) {
+    case "tool-getScheduleSnapshot":
       return <ScheduleSnapshotTool part={part} />;
-    case "analyzeIntent":
+    case "tool-analyzeIntent":
       return <AnalyzeIntentTool part={part} />;
-    case "generateScheduleCode":
+    case "tool-generateScheduleCode":
       return <GenerateCodeTool part={part} />;
-    case "executeScheduleCode":
-      return (
-        <ExecuteCodeTool part={part} onScheduleUpdate={onScheduleUpdate} />
-      );
-    case "undoLastChange":
-      return <UndoTool part={part} onScheduleUpdate={onScheduleUpdate} />;
+    case "tool-executeScheduleCode":
+      return <ExecuteCodeTool part={part} />;
+    case "tool-undoLastChange":
+      return <UndoTool part={part} />;
     default:
       return (
         <Tool>
-          <ToolHeader type={part.type} state={part.state} />
+          <ToolHeader
+            type="dynamic-tool"
+            toolName={String(part.type).replace("tool-", "")}
+            state={part.state}
+          />
           <ToolContent>
             <ToolInput input={part.input} />
           </ToolContent>

@@ -1,18 +1,19 @@
 import type { Schedule } from "../schedule/types";
 import { cloneSchedule } from "../schedule/engine";
-import { runCPM } from "../schedule/cpm";
+import { detectCircularDependencies } from "../schedule/validation";
 import { createSdkBindings, SDK_FUNCTION_NAMES } from "../schedule/sdk";
 
 export type ExecutionResult = {
   success: boolean;
   resultSchedule: Schedule;
   error?: string;
+  isCircularDependency?: boolean;
 };
 
 /**
  * Execute generated JavaScript code against a schedule clone.
- * Creates SDK bindings, runs the code via new Function(), then recalculates CPM.
- * Returns the mutated schedule or an error.
+ * Creates SDK bindings (which auto-recompute CPM after each mutation),
+ * runs the code via new Function(), then validates the result.
  */
 export function executeCode(
   code: string,
@@ -22,10 +23,8 @@ export function executeCode(
   const bindings = createSdkBindings(clone);
 
   try {
-    // Create a function with SDK bindings as parameters
     const fn = new Function(...SDK_FUNCTION_NAMES, code);
 
-    // Call with the bound SDK functions
     fn(
       bindings.getActivity,
       bindings.getAllActivities,
@@ -40,15 +39,26 @@ export function executeCode(
       bindings.applyDateConstraint
     );
 
-    // Recalculate CPM after mutations
-    const resultSchedule = runCPM(clone);
+    // Check for circular dependencies after execution
+    const activityIds = clone.activities.map((a) => a.id);
+    if (detectCircularDependencies(activityIds, clone.dependencies)) {
+      return {
+        success: false,
+        resultSchedule: schedule,
+        error: "Circular dependency detected — change rejected.",
+        isCircularDependency: true,
+      };
+    }
 
-    return { success: true, resultSchedule };
+    // clone already has CPM recomputed by SDK bindings
+    return { success: true, resultSchedule: clone };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     return {
       success: false,
       resultSchedule: schedule,
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
+      isCircularDependency: message.includes("Circular dependency"),
     };
   }
 }

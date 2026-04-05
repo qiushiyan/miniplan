@@ -1,8 +1,8 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { useState } from "react";
+import { DefaultChatTransport, isToolUIPart } from "ai";
+import { useEffect, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -20,7 +20,6 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { ToolPartRenderer } from "./tool-display";
-import { isToolUIPart } from "ai";
 import type { Schedule } from "@/lib/schedule/types";
 
 type ChatPanelProps = {
@@ -34,6 +33,30 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
       api: "/api/chat",
     }),
   });
+
+  // Track which tool call IDs we've already synced to avoid duplicate updates
+  const syncedToolCalls = useRef(new Set<string>());
+
+  // Extract schedule updates from tool results via useEffect (not during render)
+  useEffect(() => {
+    for (const message of messages) {
+      for (const part of message.parts) {
+        if (!isToolUIPart(part)) continue;
+        if (part.state !== "output-available") continue;
+        if (syncedToolCalls.current.has(part.toolCallId)) continue;
+
+        const output = part.output as Record<string, unknown> | undefined;
+        if (
+          output?.schedule &&
+          (part.type === "tool-executeScheduleCode" ||
+            part.type === "tool-undoLastChange")
+        ) {
+          syncedToolCalls.current.add(part.toolCallId);
+          onScheduleUpdate(output.schedule as Schedule);
+        }
+      }
+    }
+  }, [messages, onScheduleUpdate]);
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (message.text.trim()) {
@@ -89,7 +112,6 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
                         <ToolPartRenderer
                           key={`${message.id}-tool-${i}`}
                           part={part}
-                          onScheduleUpdate={onScheduleUpdate}
                         />
                       );
                     }
