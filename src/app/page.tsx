@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ChatPanel } from "@/components/chat";
+import { AONDiagram } from "@/components/aon-diagram";
+import { ResourceBar } from "@/components/resource-bar";
 import { ScheduleTable } from "@/components/schedule-table";
 import type { Schedule } from "@/lib/schedule/types";
 
@@ -30,8 +32,17 @@ export default function Home() {
         </div>
 
         {/* Visualization Panel - Right */}
-        <div className="flex w-3/5 flex-col overflow-auto p-6">
-          <ScheduleTable schedule={schedule} />
+        <div className="flex w-3/5 flex-col overflow-auto">
+          {/* AON Diagram */}
+          <div className="h-[400px] border-b">
+            <AONDiagram schedule={schedule} />
+          </div>
+
+          {/* Resource Bar + Table */}
+          <div className="space-y-6 p-6">
+            <ResourceBar schedule={schedule} />
+            <ScheduleTable schedule={schedule} />
+          </div>
         </div>
       </div>
     </div>
