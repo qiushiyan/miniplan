@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart } from "ai";
+import type { UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Conversation,
@@ -13,6 +14,12 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
+import { Spinner } from "@/components/ui/spinner";
 import {
   PromptInput,
   PromptInputTextarea,
@@ -100,6 +107,8 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
     sendMessage({ text: suggestion });
   };
 
+  const isStreaming = status === "streaming";
+
   return (
     <div className="flex h-full flex-col">
       <Conversation>
@@ -117,31 +126,23 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
               />
             </div>
           ) : (
-            messages.map((message) => (
+            messages.map((message, index) => (
               <Message from={message.role} key={message.id}>
                 <MessageContent>
-                  {message.parts.map((part, i) => {
-                    if (part.type === "text") {
-                      return (
-                        <MessageResponse key={`${message.id}-text-${i}`}>
-                          {part.text}
-                        </MessageResponse>
-                      );
-                    }
-                    if (isToolUIPart(part)) {
-                      return (
-                        <ToolPartRenderer
-                          key={`${message.id}-tool-${i}`}
-                          part={part}
-                        />
-                      );
-                    }
-                    // Skip data-suggestions in message rendering — shown below input
-                    return null;
-                  })}
+                  <MessageParts
+                    message={message}
+                    isLastMessage={index === messages.length - 1}
+                    isStreaming={isStreaming}
+                  />
                 </MessageContent>
               </Message>
             ))
+          )}
+          {status === "submitted" && (
+            <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+              <Spinner />
+              <span>Thinking...</span>
+            </div>
           )}
         </ConversationContent>
         <ConversationScrollButton />
@@ -173,6 +174,62 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
         </PromptInput>
       </div>
     </div>
+  );
+}
+
+function MessageParts({
+  message,
+  isLastMessage,
+  isStreaming,
+}: {
+  message: UIMessage;
+  isLastMessage: boolean;
+  isStreaming: boolean;
+}) {
+  // Consolidate all reasoning parts into a single block
+  const reasoningParts = message.parts.filter(
+    (part) => part.type === "reasoning"
+  );
+  const reasoningText = reasoningParts.map((part) => part.text).join("\n\n");
+  const hasReasoning = reasoningParts.length > 0;
+
+  // Check if reasoning is still actively streaming
+  const lastPart = message.parts.at(-1);
+  const isReasoningStreaming =
+    isLastMessage && isStreaming && lastPart?.type === "reasoning";
+
+  return (
+    <>
+      {hasReasoning && (
+        <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
+          <ReasoningTrigger />
+          <ReasoningContent>{reasoningText}</ReasoningContent>
+        </Reasoning>
+      )}
+      {message.parts.map((part, i) => {
+        if (part.type === "text") {
+          return (
+            <MessageResponse key={`${message.id}-text-${i}`}>
+              {part.text}
+            </MessageResponse>
+          );
+        }
+        if (part.type === "reasoning") {
+          // Already rendered above as consolidated block
+          return null;
+        }
+        if (isToolUIPart(part)) {
+          return (
+            <ToolPartRenderer
+              key={`${message.id}-tool-${i}`}
+              part={part}
+            />
+          );
+        }
+        // Skip data-suggestions — shown below input
+        return null;
+      })}
+    </>
   );
 }
 
