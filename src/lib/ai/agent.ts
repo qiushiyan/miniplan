@@ -1,10 +1,10 @@
 import { ToolLoopAgent, type InferAgentUIMessage } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { model } from "./model";
 import { scheduleTools } from "./tools";
 import { systemPrompt } from "./prompts";
 
 export const scheduleAgent = new ToolLoopAgent({
-  model: anthropic("claude-sonnet-4-5"),
+  model,
   instructions: systemPrompt,
   tools: scheduleTools,
 });
