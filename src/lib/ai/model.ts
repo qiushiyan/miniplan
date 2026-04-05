@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 
 const anthropic = createAnthropic({
-  baseURL: "https://llm.listenhub.dev/v1",
+  baseURL: process.env.LLM_BASE_URL,
   apiKey: process.env.LLM_API_KEY,
 });
 
