@@ -8,7 +8,7 @@ Think of it as a simplified version of what PlanLab (https://www.planlab.ai) bui
 
 ## Current state
 
-This is a boilerplate Nextjs 16 project (app router) with all default settings and pages. You need to start from scratch.
+This is a barebone Nextjs 16 project (app router) with all default settings and pages. You need to start from scratch.
 
 ## Domain Background: Construction Scheduling
 
@@ -202,6 +202,8 @@ For AI related components, I will be installed the ai-elements registry of compo
 - **No calendar/working days logic** — all durations are in simple days
 - **No multiple schedules** — one fixed schedule
 - **No real sandbox isolation** — a simple `new Function()` execution with the SDK functions in scope is sufficient. We are not handling untrusted code.
+- All chat history happens in one single session, so you dont have to build a sidebar listing sessions in traditional chat frontends
+- Did not made a decision on what canvas package we want to use yet, since we are mostly interested in a simple static display of activities and edges, we might dont need a fancy library, but I have heard good things about @xyflow/react
 
 ## Implementation Order
 
@@ -238,9 +240,34 @@ The project focus is structured as follows:
 
 We do need a somewhat friendly and easy frontend display so that we can see how it works in action, but overall, the frontend is also not a special focus here.
 
+## Why This Project Exists
+
+This is a demo project built for a job interview at PlanLab (https://www.planlab.ai), a London-based startup that builds AI-powered construction scheduling software. 
+
+
+The purpose of this demo is to show that I understand their core product architecture — specifically the pipeline of natural language → intent analysis → code generation → schedule execution → visualization — and that I can build a working version of it from scratch.
+
+This is a toy implementation. It is intentionally minimal. The goal is NOT to build a production-ready scheduling tool. The goal IS to demonstrate:
+
+Understanding of the domain: CPM, critical path, float, dependencies — these concepts are correctly implemented
+Understanding of the AI pipeline: The 3-step pipeline mirrors PlanLab's actual architecture as described in their blog posts
+Engineering judgment: Clean separation of concerns, transparent pipeline visibility, proper validation after mutations
+
+What we plan to focus on after the MVP runs:
+
+Eval system: Adding automated evaluation for each pipeline step — did intent analysis correctly parse the query? Did code generation produce valid SDK calls? Did execution maintain schedule integrity? This is the interviewer's top priority ("70% of time should be on evals")
+
+Clarification UX: Designing better patterns for handling ambiguous user requests — when to ask follow-up questions, how to present tradeoffs, how to help users who don't know exactly what they want
+
+Live customization demo: Using this project as a base to show how I would implement a new feature request on the spot during the interview, demonstrating my development workflow with AI coding tools
+
+
 
 ## Reference Materials
 
 - PlanLab blog "If Planners Were Programmers": resources/planlab-blog.md — The product vision and code generation examples we're replicating
 - PlanLab blog "Critical Path Drag": resources/drag.md — Deeper understanding of CPM concepts
-- Coursera "Construction Scheduling" by Columbia University — If you need more background on CPM, forward/backward pass, and float calculations
+- Use web search — If you need more background on CPM, forward/backward pass, and float calculations
+
+
+You current job is researching relevant domain knowledge, tech stack (using context7 or web search), and interview my to make sure you understand the product intention. DO not implement anything now.

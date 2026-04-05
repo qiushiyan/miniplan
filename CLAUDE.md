@@ -1,10 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## What This Is
-
-MiniPlan is an AI-powered construction schedule editor — a demo for a PlanLab interview. Users chat in natural language; an agentic AI pipeline translates requests into schedule operations through three visible stages (intent analysis → code generation → execution), then visualizes results in an AON diagram.
+You are working on  an AI-powered construction schedule editor. Users chat in natural language; an agentic AI pipeline translates requests into schedule operations through three visible stages (intent analysis → code generation → execution), then visualizes results in an AON diagram.
 
 The core product principle: **transparency over magic**. Every pipeline stage produces a typed artifact rendered in the UI. The planner sees what the AI understood, what code it wrote, and what changed.
 
@@ -27,6 +21,15 @@ Vitest is installed but no test suite exists yet. When tests are added: `pnpm vi
 - **@xyflow/react** + **@dagrejs/dagre** — AON diagram with automatic DAG layout
 - **ai-elements** — vendored chat UI components (Conversation, Message, PromptInput, Tool, CodeBlock)
 - **Tailwind CSS v4** + **shadcn/ui** + **Biome** for formatting/linting
+
+## Conventions
+
+- Use kebab-case for file and folder names
+- Use PascalCase for React component names
+- Keep comments minimal and concise, document the intention behind complex logic
+- Avoid explicit return types unless representing domain models or complex generics
+- **DO NOT** create barrel files for re-exporting; import directly from individual modules
+- `@/*` maps to `./src/*`, prefer `@/` imports
 
 ## Architecture
 
@@ -51,6 +54,3 @@ Three surfaces, each for what it does best:
 - No persistence — resets on refresh
 - Resources warned, never auto-leveled
 - `prompt-input.tsx` has `@ts-nocheck` due to Base UI type incompatibility — tech debt
-- `ANTHROPIC_API_KEY` must be in `.env.local`
-
-@AGENTS.md
