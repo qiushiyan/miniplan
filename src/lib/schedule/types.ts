@@ -93,12 +93,20 @@ export type PipelineRun = {
   scheduleAfter: Schedule;
 };
 
+export type PendingPipelineRun = {
+  userMessage: string;
+  scheduleBefore: Schedule;
+  intent: IntentArtifact | null;
+  code: CodeArtifact | null;
+};
+
 // --- Runtime state ---
 
 export type ScheduleState = {
   current: Schedule;
   previous: Schedule | null;
   lastPipelineRun: PipelineRun | null;
+  pendingPipelineRun: PendingPipelineRun | null;
 };
 
 // --- Validation types ---

@@ -1,4 +1,11 @@
-import type { Schedule, ScheduleState, PipelineRun } from "./types";
+import type {
+  CodeArtifact,
+  IntentArtifact,
+  PendingPipelineRun,
+  PipelineRun,
+  Schedule,
+  ScheduleState,
+} from "./types";
 import { createMockSchedule } from "./mock-data";
 import { cloneSchedule } from "./engine";
 
@@ -6,6 +13,7 @@ let state: ScheduleState = {
   current: createMockSchedule(),
   previous: null,
   lastPipelineRun: null,
+  pendingPipelineRun: null,
 };
 
 export function getScheduleState(): ScheduleState {
@@ -24,6 +32,7 @@ export function commit(newSchedule: Schedule): void {
     current: newSchedule,
     previous: cloneSchedule(state.current),
     lastPipelineRun: state.lastPipelineRun,
+    pendingPipelineRun: state.pendingPipelineRun,
   };
 }
 
@@ -36,6 +45,7 @@ export function undo(): Schedule | null {
     current: state.previous,
     previous: null,
     lastPipelineRun: state.lastPipelineRun,
+    pendingPipelineRun: state.pendingPipelineRun,
   };
   return state.current;
 }
@@ -44,7 +54,46 @@ export function undo(): Schedule | null {
  * Store the last pipeline run for eval readiness.
  */
 export function setPipelineRun(run: PipelineRun): void {
-  state = { ...state, lastPipelineRun: run };
+  state = { ...state, lastPipelineRun: run, pendingPipelineRun: null };
+}
+
+export function beginPipelineRun(userMessage: string): PendingPipelineRun {
+  const pendingPipelineRun: PendingPipelineRun = {
+    userMessage,
+    scheduleBefore: cloneSchedule(state.current),
+    intent: null,
+    code: null,
+  };
+  state = { ...state, pendingPipelineRun };
+  return pendingPipelineRun;
+}
+
+export function setPendingIntent(intent: IntentArtifact): PendingPipelineRun {
+  const pendingPipelineRun = state.pendingPipelineRun ?? beginPipelineRun("");
+  const nextPendingPipelineRun: PendingPipelineRun = {
+    ...pendingPipelineRun,
+    intent,
+  };
+  state = { ...state, pendingPipelineRun: nextPendingPipelineRun };
+  return nextPendingPipelineRun;
+}
+
+export function setPendingCode(code: CodeArtifact): PendingPipelineRun {
+  const pendingPipelineRun = state.pendingPipelineRun ?? beginPipelineRun("");
+  const nextPendingPipelineRun: PendingPipelineRun = {
+    ...pendingPipelineRun,
+    code,
+  };
+  state = { ...state, pendingPipelineRun: nextPendingPipelineRun };
+  return nextPendingPipelineRun;
+}
+
+export function getPendingPipelineRun(): PendingPipelineRun | null {
+  return state.pendingPipelineRun;
+}
+
+export function clearPendingPipelineRun(): void {
+  state = { ...state, pendingPipelineRun: null };
 }
 
 /**
@@ -55,5 +104,6 @@ export function resetState(): void {
     current: createMockSchedule(),
     previous: null,
     lastPipelineRun: null,
+    pendingPipelineRun: null,
   };
 }

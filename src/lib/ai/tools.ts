@@ -1,10 +1,17 @@
 import { tool } from "ai";
 import { z } from "zod";
 import {
+  beginPipelineRun,
+  clearPendingPipelineRun,
   getCurrentSchedule,
   commit,
+  getPendingPipelineRun,
+  setPendingCode,
+  setPendingIntent,
   undo,
   setPipelineRun,
+  type CodeArtifact,
+  type IntentArtifact,
   type Schedule,
   type ExecutionArtifact,
   type PipelineRun,
@@ -81,6 +88,40 @@ function computeDiff(before: Schedule, after: Schedule) {
   return changes;
 }
 
+function createFailedExecutionArtifact(
+  schedule: Schedule,
+  error: string,
+  warnings: string[] = []
+): ExecutionArtifact {
+  return {
+    success: false,
+    error,
+    warnings,
+    projectDurationBefore: schedule.projectDuration,
+    projectDurationAfter: schedule.projectDuration,
+    criticalPathBefore: schedule.criticalPath,
+    criticalPathAfter: schedule.criticalPath,
+    changedActivities: [],
+  };
+}
+
+function createPipelineRunFromState(
+  execution: ExecutionArtifact | null,
+  scheduleAfter: Schedule
+): PipelineRun {
+  const pendingPipelineRun = getPendingPipelineRun();
+
+  return {
+    userMessage: pendingPipelineRun?.userMessage ?? "",
+    scheduleBefore:
+      pendingPipelineRun?.scheduleBefore ?? cloneSchedule(getCurrentSchedule()),
+    intent: pendingPipelineRun?.intent ?? null,
+    code: pendingPipelineRun?.code ?? null,
+    execution,
+    scheduleAfter: cloneSchedule(scheduleAfter),
+  };
+}
+
 export const scheduleTools = {
   getScheduleSnapshot: tool({
     description:
@@ -139,7 +180,27 @@ export const scheduleTools = {
         .describe("Human-readable summary of what you understood"),
     }),
     execute: async (input) => {
+      beginPipelineRun(input.userRequest);
+      const intentArtifact: IntentArtifact = {
+        intentClearEnough: input.intentClearEnough,
+        clarificationAsked: input.clarificationAsked,
+        clarificationOptions: input.clarificationOptions,
+        operationType: input.operationType,
+        targetActivityIds: input.targetActivityIds,
+        parameters: input.parameters,
+        summary: input.summary,
+      };
+      const pendingPipelineRun = setPendingIntent(intentArtifact);
+
       if (!input.intentClearEnough) {
+        setPipelineRun({
+          userMessage: pendingPipelineRun.userMessage,
+          scheduleBefore: cloneSchedule(pendingPipelineRun.scheduleBefore),
+          intent: pendingPipelineRun.intent,
+          code: null,
+          execution: null,
+          scheduleAfter: cloneSchedule(getCurrentSchedule()),
+        });
         return {
           status: "clarification_needed",
           message:
@@ -170,12 +231,19 @@ export const scheduleTools = {
         .describe("Names of SDK functions used in the code"),
     }),
     execute: async (input) => {
+      const codeArtifact: CodeArtifact = {
+        code: input.code,
+        description: input.description,
+        sdkCalls: input.sdkCalls,
+      };
+
       // Validate that sdkCalls only reference approved functions
       const approvedNames = new Set<string>(SDK_FUNCTION_NAMES);
       const invalidCalls = input.sdkCalls.filter(
         (name) => !approvedNames.has(name)
       );
       if (invalidCalls.length > 0) {
+        setPendingCode(codeArtifact);
         return {
           status: "invalid",
           message: `Unknown SDK functions: ${invalidCalls.join(", ")}. Use only approved SDK functions.`,
@@ -184,6 +252,7 @@ export const scheduleTools = {
           sdkCalls: input.sdkCalls,
         };
       }
+      setPendingCode(codeArtifact);
       return {
         status: "ready",
         message: "Code is ready for execution. Call executeScheduleCode next.",
@@ -205,10 +274,19 @@ export const scheduleTools = {
       const result = executeCode(code, before);
 
       if (!result.success) {
+        const error = result.isCircularDependency
+          ? "Circular dependency detected — change rejected."
+          : result.error ?? "Code execution failed.";
+        const artifact = createFailedExecutionArtifact(before, error);
+        setPipelineRun(createPipelineRunFromState(artifact, before));
+
         return {
           success: false,
-          error: result.error,
-          message: `Code execution failed: ${result.error}. Explain the error to the user and suggest a fix.`,
+          error,
+          warnings: result.isCircularDependency ? [error] : [],
+          message: result.isCircularDependency
+            ? "The change was rejected because it creates a circular dependency. Explain why the schedule logic becomes invalid and suggest an alternative."
+            : `Code execution failed: ${error}. Explain the error to the user and suggest a fix.`,
         };
       }
 
@@ -216,6 +294,12 @@ export const scheduleTools = {
       const validation = validate(result.resultSchedule);
 
       if (!validation.valid) {
+        const artifact = createFailedExecutionArtifact(
+          before,
+          "Validation failed",
+          validation.warnings
+        );
+        setPipelineRun(createPipelineRunFromState(artifact, before));
         return {
           success: false,
           error: "Validation failed",
@@ -256,16 +340,7 @@ export const scheduleTools = {
         changedActivities,
       };
 
-      // Persist pipeline run for eval readiness
-      const pipelineRun: PipelineRun = {
-        userMessage: code,
-        scheduleBefore: cloneSchedule(before),
-        intent: null,
-        code: { code, description: "", sdkCalls: [] },
-        execution: artifact,
-        scheduleAfter: cloneSchedule(after),
-      };
-      setPipelineRun(pipelineRun);
+      setPipelineRun(createPipelineRunFromState(artifact, after));
 
       return {
         success: true,
@@ -288,6 +363,7 @@ export const scheduleTools = {
           message: "Nothing to undo.",
         };
       }
+      clearPendingPipelineRun();
       return {
         success: true,
         message: "Last change undone. Inform the user what was restored.",
