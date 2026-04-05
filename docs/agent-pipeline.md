@@ -22,19 +22,32 @@ This is the demo's strongest selling point: it shows the planner exactly how the
 
 **undoLastChange** — Restores the previous schedule snapshot. Callable by the model ("undo that") or by the UI's undo button via a separate API endpoint.
 
-## System Prompt Design
+## Prompt Architecture
 
-The prompt follows principles from the Cola prompting guide (see `memory/prompting_reference.md`):
+The prompt uses three surfaces, each for what it does best. This follows the principle that system prompt rules are for general reasoning, tool descriptions are for usage patterns, and tool responses are for moment-specific guidance.
 
-- **Positive framing** — "Proceed directly when..." not "Don't ask unnecessary questions"
-- **Trigger + action + skip conditions** — each behavioral rule specifies when it applies and when to skip
-- **Examples with anti-patterns** — shows the model what over-clarifying looks like
-- **No developer-facing framing** — no mechanism explanations, just what to do
-- **XML structure** — `<role>`, `<workflow>`, `<clarification>`, `<code-generation>` sections
+**System prompt** — establishes the agent's thinking framework. Organized as XML sections:
 
-The prompt includes SDK function signatures and activity IDs so the model knows exactly what code to write. It does not explain how the engine works internally.
+- `<domain>` — scheduling knowledge the model needs for judgment calls: what critical path means for planners, why float matters, how resource conflicts affect real projects. Without this, the model follows procedures but can't reason about tradeoffs.
+- `<thinking>` — reasoning framework applied before each action: is this read or modify? Is the intent clear? Will this affect the critical path? Are there resource implications?
+- `<workflow>` — the pipeline stage sequence as behavioral guidance, not a rigid checklist. Explains why each stage matters and when to deviate (informational queries skip the pipeline).
+- `<clarification>` — when to proceed vs. when to propose options, with good/avoid examples. The key behavioral rule: propose concrete scheduling interpretations with tradeoffs, never ask open-ended questions.
+- `<summarization>` — how to report changes in planner-useful terms. Examples show the expected depth: what changed, why it matters for the schedule, what the planner should watch for.
+- `<failure-handling>` — how to explain rejections in domain language and suggest alternatives.
+- `<code-generation>` — SDK function signatures and activity IDs. Practical reference, not architecture explanation.
 
-**Tool response nudges** provide moment-specific guidance that's more effective than system prompt rules: "Resource conflict detected on Cranes during days 13-23 — inform the user." These fire at the exact moment the model needs to decide what to tell the planner.
+**Tool descriptions** — shape how the model decides when and how to use each tool. Key descriptions:
+- `analyzeIntent`: "makes your reasoning visible in the UI" — teaches the model this isn't just a formality
+- `generateScheduleCode`: "description in scheduling terms, not programming terms" — steers the model toward planner-facing language
+- `executeScheduleCode`: "summarize for the planner in scheduling terms" — sets expectations for what comes after
+
+**Tool response nudges** — moment-specific guidance at the exact point the model needs to decide what to tell the planner:
+- Duration change: "Project duration increased by 2 days. Explain why: was the changed activity on the critical path?"
+- Critical path shift: "Explain which activities are now critical that weren't before"
+- Near-critical detection: flags activities with <=2 days float as risk areas
+- Resource warnings: "Present each warning clearly with its scheduling consequence"
+
+These nudges are more effective than system prompt rules because they fire at the moment of decision, not hundreds of tokens earlier.
 
 ## Clarification UX
 
