@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -41,6 +41,10 @@ type ChatPanelProps = {
 
 export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -50,7 +54,7 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
   // Track which tool call IDs we've already synced to avoid duplicate updates
   const syncedToolCalls = useRef(new Set<string>());
 
-  // Extract schedule updates from tool results via useEffect (not during render)
+  // Extract schedule updates from tool results
   useEffect(() => {
     for (const message of messages) {
       for (const part of message.parts) {
@@ -71,41 +75,55 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
     }
   }, [messages, onScheduleUpdate]);
 
-  // Extract the latest suggestions from the most recent assistant message
-  const suggestions = useMemo(() => {
-    if (messages.length === 0) return DEFAULT_SUGGESTIONS;
+  // Fetch suggestions asynchronously when agent finishes
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const wasStreaming =
+      prevStatusRef.current === "streaming" ||
+      prevStatusRef.current === "submitted";
+    prevStatusRef.current = status;
 
-    // Search backwards for the latest data-suggestions part
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg.role !== "assistant") continue;
-      for (const part of msg.parts) {
-        if (
-          part.type === "data-suggestions" &&
-          "data" in part &&
-          part.data
-        ) {
-          const data = part.data as { suggestions?: string[] };
-          if (data.suggestions && data.suggestions.length > 0) {
-            return data.suggestions;
-          }
+    if (status !== "ready" || !wasStreaming || messages.length === 0) return;
+
+    // Abort any in-flight suggestion request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setSuggestionsLoading(true);
+
+    // Fire and forget — don't block anything
+    fetchSuggestions(messages, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted && result.length > 0) {
+          setSuggestions(result);
         }
-      }
-    }
-
-    return DEFAULT_SUGGESTIONS;
-  }, [messages]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setSuggestionsLoading(false);
+        }
+      });
+  }, [status, messages]);
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (message.text.trim()) {
+      // Abort in-flight suggestions and clear them when sending a new message
+      abortRef.current?.abort();
+      setSuggestions([]);
       sendMessage({ text: message.text });
       setInput("");
     }
   };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    sendMessage({ text: suggestion });
-  };
+  const handleSuggestionClick = useCallback(
+    (suggestion: string) => {
+      abortRef.current?.abort();
+      setSuggestions([]);
+      sendMessage({ text: suggestion });
+    },
+    [sendMessage]
+  );
 
   const isStreaming = status === "streaming";
 
@@ -149,15 +167,17 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
       </Conversation>
 
       <div className="border-t p-4">
-        {/* Streaming suggestions shown above the input */}
-        {messages.length > 0 && status === "ready" && (
-          <div className="mx-auto mb-2 max-w-2xl">
-            <SuggestionButtons
-              suggestions={suggestions}
-              onClick={handleSuggestionClick}
-            />
-          </div>
-        )}
+        {/* Suggestions shown above input — visible when ready or loading async */}
+        {messages.length > 0 &&
+          (status === "ready" || suggestionsLoading) &&
+          suggestions.length > 0 && (
+            <div className="mx-auto mb-2 max-w-2xl">
+              <SuggestionButtons
+                suggestions={suggestions}
+                onClick={handleSuggestionClick}
+              />
+            </div>
+          )}
 
         <PromptInput onSubmit={handleSubmit} className="mx-auto max-w-2xl">
           <PromptInputTextarea
@@ -167,7 +187,7 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
             className="pr-12"
           />
           <PromptInputSubmit
-            status={status === "streaming" ? "streaming" : "ready"}
+            status={isStreaming ? "streaming" : "ready"}
             disabled={!input.trim() && status !== "streaming"}
             className="absolute bottom-1 right-1"
           />
@@ -175,6 +195,30 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
       </div>
     </div>
   );
+}
+
+async function fetchSuggestions(
+  messages: UIMessage[],
+  signal: AbortSignal
+): Promise<string[]> {
+  try {
+    const res = await fetch("/api/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+      signal,
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    // The endpoint returns streamed text that builds up a JSON object
+    // Parse the final result
+    const parsed = JSON.parse(text);
+    return parsed.suggestions?.filter(
+      (s: unknown): s is string => typeof s === "string" && (s as string).length > 0
+    ) ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function MessageParts({
@@ -186,14 +230,12 @@ function MessageParts({
   isLastMessage: boolean;
   isStreaming: boolean;
 }) {
-  // Consolidate all reasoning parts into a single block
   const reasoningParts = message.parts.filter(
     (part) => part.type === "reasoning"
   );
   const reasoningText = reasoningParts.map((part) => part.text).join("\n\n");
   const hasReasoning = reasoningParts.length > 0;
 
-  // Check if reasoning is still actively streaming
   const lastPart = message.parts.at(-1);
   const isReasoningStreaming =
     isLastMessage && isStreaming && lastPart?.type === "reasoning";
@@ -208,7 +250,6 @@ function MessageParts({
       )}
       {message.parts.map((part, i) => {
         if (part.type === "text") {
-          // Show streaming caret on the last text part of the last assistant message
           const isLastTextPart =
             isLastMessage &&
             isStreaming &&
@@ -224,7 +265,6 @@ function MessageParts({
           );
         }
         if (part.type === "reasoning") {
-          // Already rendered above as consolidated block
           return null;
         }
         if (isToolUIPart(part)) {
@@ -235,7 +275,6 @@ function MessageParts({
             />
           );
         }
-        // Skip data-suggestions — shown below input
         return null;
       })}
     </>
