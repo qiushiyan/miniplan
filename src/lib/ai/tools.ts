@@ -125,7 +125,7 @@ function createPipelineRunFromState(
 export const scheduleTools = {
   getScheduleSnapshot: tool({
     description:
-      "Read the current schedule state including all activities with CPM values, dependencies, resources, and critical path.",
+      "Read the current schedule state. Call this before any modification to see the latest activities, CPM values, dependencies, resources, and critical path. Also use this to answer informational queries.",
     inputSchema: z.object({}),
     execute: async () => {
       const schedule = getCurrentSchedule();
@@ -135,7 +135,7 @@ export const scheduleTools = {
 
   analyzeIntent: tool({
     description:
-      "Externalize your analysis of the user's request. Fill in the structured intent fields to show what you understood. If the request is ambiguous, set intentClearEnough to false and provide clarificationOptions with concrete alternatives and tradeoffs.",
+      "Externalize your analysis of the user's request as a structured intent. This makes your reasoning visible in the UI. For clear requests, set intentClearEnough=true and proceed. For ambiguous requests, set intentClearEnough=false and provide clarificationOptions — each option should name a concrete scheduling approach and its tradeoff.",
     inputSchema: z.object({
       userRequest: z.string().describe("The user's original request"),
       intentClearEnough: z
@@ -218,17 +218,17 @@ export const scheduleTools = {
 
   generateScheduleCode: tool({
     description:
-      "Generate JavaScript code using the Schedule SDK to implement the intended schedule change. The code will be executed in a sandboxed scope with SDK functions available.",
+      "Write JavaScript code using the Schedule SDK to implement the schedule change. This code is shown to the planner — write it clearly. The description field should explain the change in scheduling terms, not programming terms.",
     inputSchema: z.object({
       code: z
         .string()
-        .describe("JavaScript code using Schedule SDK functions"),
+        .describe("JavaScript code using Schedule SDK functions. Keep it simple — one logical operation per block."),
       description: z
         .string()
-        .describe("Human-readable description of what the code does"),
+        .describe("What this change does in scheduling terms (e.g., 'Extends excavation by 2 days, which will push the critical path')"),
       sdkCalls: z
         .array(z.string())
-        .describe("Names of SDK functions used in the code"),
+        .describe("SDK function names used in the code"),
     }),
     execute: async (input) => {
       const codeArtifact: CodeArtifact = {
@@ -265,9 +265,9 @@ export const scheduleTools = {
 
   executeScheduleCode: tool({
     description:
-      "Execute the generated JavaScript code against the current schedule. The code runs in a sandboxed scope with Schedule SDK functions available. On success, the schedule is updated and an undo snapshot is saved.",
+      "Execute the generated code against the schedule. On success, the change is applied and an undo snapshot is saved. On failure (circular dependency, validation error), the schedule is unchanged. After this tool completes, summarize the result for the planner in scheduling terms.",
     inputSchema: z.object({
-      code: z.string().describe("JavaScript code to execute"),
+      code: z.string().describe("The JavaScript code to execute — should match what was passed to generateScheduleCode"),
     }),
     execute: async ({ code }) => {
       const before = getCurrentSchedule();
@@ -314,19 +314,34 @@ export const scheduleTools = {
       const after = result.resultSchedule;
       const changedActivities = computeDiff(before, after);
 
-      // Build targeted nudges for the response
+      // Build targeted nudges — moment-specific guidance for the model's summary
       const nudges: string[] = [];
+      const durationDelta = after.projectDuration - before.projectDuration;
+      if (durationDelta !== 0) {
+        nudges.push(
+          `Project duration ${durationDelta > 0 ? "increased" : "decreased"} by ${Math.abs(durationDelta)} days (${before.projectDuration} → ${after.projectDuration}). Explain why: was the changed activity on the critical path?`
+        );
+      }
       if (
         JSON.stringify(before.criticalPath) !==
         JSON.stringify(after.criticalPath)
       ) {
         nudges.push(
-          `Critical path changed from [${before.criticalPath.join(" → ")}] to [${after.criticalPath.join(" → ")}] — highlight this to the user.`
+          `Critical path shifted from [${before.criticalPath.join(" → ")}] to [${after.criticalPath.join(" → ")}]. Explain what this means for the planner — which activities are now critical that weren't before?`
+        );
+      }
+      // Check for near-critical activities (float <= 2)
+      const nearCritical = after.activities.filter(
+        (a) => a.float > 0 && a.float <= 2 && !after.criticalPath.includes(a.id)
+      );
+      if (nearCritical.length > 0) {
+        nudges.push(
+          `Near-critical activities with low float: ${nearCritical.map((a) => `${a.name} (${a.float}d float)`).join(", ")}. Mention these as risk areas.`
         );
       }
       if (validation.warnings.length > 0) {
         nudges.push(
-          `Warnings detected: ${validation.warnings.join("; ")} — inform the user.`
+          `Warnings: ${validation.warnings.join("; ")}. Present each warning clearly with its scheduling consequence.`
         );
       }
 
