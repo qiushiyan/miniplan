@@ -6,3 +6,4 @@ const anthropic = createAnthropic({
 });
 
 export const model = anthropic("claude-opus-4-6-high");
+export const suggestionModel = anthropic("claude-haiku-4-5-20251001");

@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -21,6 +21,12 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { ToolPartRenderer } from "./tool-display";
 import type { Schedule } from "@/lib/schedule/types";
+
+const DEFAULT_SUGGESTIONS = [
+  "What's the critical path?",
+  "Make excavation 7 days",
+  "Speed up the project",
+];
 
 type ChatPanelProps = {
   onScheduleUpdate: (schedule: Schedule) => void;
@@ -58,11 +64,40 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
     }
   }, [messages, onScheduleUpdate]);
 
+  // Extract the latest suggestions from the most recent assistant message
+  const suggestions = useMemo(() => {
+    if (messages.length === 0) return DEFAULT_SUGGESTIONS;
+
+    // Search backwards for the latest data-suggestions part
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      for (const part of msg.parts) {
+        if (
+          part.type === "data-suggestions" &&
+          "data" in part &&
+          part.data
+        ) {
+          const data = part.data as { suggestions?: string[] };
+          if (data.suggestions && data.suggestions.length > 0) {
+            return data.suggestions;
+          }
+        }
+      }
+    }
+
+    return DEFAULT_SUGGESTIONS;
+  }, [messages]);
+
   const handleSubmit = (message: PromptInputMessage) => {
     if (message.text.trim()) {
       sendMessage({ text: message.text });
       setInput("");
     }
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    sendMessage({ text: suggestion });
   };
 
   return (
@@ -76,24 +111,10 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
                 Ask me about the construction schedule or request changes. I can
                 modify durations, add dependencies, and apply constraints.
               </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {[
-                  "What's the critical path?",
-                  "Make excavation 7 days",
-                  "Speed up the project",
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
-                    onClick={() => {
-                      sendMessage({ text: suggestion });
-                    }}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
+              <SuggestionButtons
+                suggestions={DEFAULT_SUGGESTIONS}
+                onClick={handleSuggestionClick}
+              />
             </div>
           ) : (
             messages.map((message) => (
@@ -115,6 +136,7 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
                         />
                       );
                     }
+                    // Skip data-suggestions in message rendering — shown below input
                     return null;
                   })}
                 </MessageContent>
@@ -126,6 +148,16 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
       </Conversation>
 
       <div className="border-t p-4">
+        {/* Streaming suggestions shown above the input */}
+        {messages.length > 0 && status === "ready" && (
+          <div className="mx-auto mb-2 max-w-2xl">
+            <SuggestionButtons
+              suggestions={suggestions}
+              onClick={handleSuggestionClick}
+            />
+          </div>
+        )}
+
         <PromptInput onSubmit={handleSubmit} className="mx-auto max-w-2xl">
           <PromptInputTextarea
             value={input}
@@ -140,6 +172,29 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
           />
         </PromptInput>
       </div>
+    </div>
+  );
+}
+
+function SuggestionButtons({
+  suggestions,
+  onClick,
+}: {
+  suggestions: string[];
+  onClick: (suggestion: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {suggestions.map((suggestion) => (
+        <button
+          key={suggestion}
+          type="button"
+          className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          onClick={() => onClick(suggestion)}
+        >
+          {suggestion}
+        </button>
+      ))}
     </div>
   );
 }
