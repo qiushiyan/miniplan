@@ -167,17 +167,24 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
       </Conversation>
 
       <div className="border-t p-4">
-        {/* Suggestions shown above input — visible when ready or loading async */}
-        {messages.length > 0 &&
-          (status === "ready" || suggestionsLoading) &&
-          suggestions.length > 0 && (
-            <div className="mx-auto mb-2 max-w-2xl">
-              <SuggestionButtons
-                suggestions={suggestions}
-                onClick={handleSuggestionClick}
-              />
-            </div>
-          )}
+        {/* Suggestion area above input */}
+        {messages.length > 0 && status === "ready" && (
+          <div className="mx-auto mb-2 max-w-2xl">
+            {suggestionsLoading && suggestions.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 py-1.5 text-xs text-muted-foreground">
+                <Spinner className="size-3" />
+                <span>Planning next steps...</span>
+              </div>
+            ) : (
+              suggestions.length > 0 && (
+                <SuggestionButtons
+                  suggestions={suggestions}
+                  onClick={handleSuggestionClick}
+                />
+              )
+            )}
+          </div>
+        )}
 
         <PromptInput onSubmit={handleSubmit} className="mx-auto max-w-2xl">
           <PromptInputTextarea
