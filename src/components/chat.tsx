@@ -208,8 +208,17 @@ function MessageParts({
       )}
       {message.parts.map((part, i) => {
         if (part.type === "text") {
+          // Show streaming caret on the last text part of the last assistant message
+          const isLastTextPart =
+            isLastMessage &&
+            isStreaming &&
+            message.role === "assistant" &&
+            i === message.parts.findLastIndex((p) => p.type === "text");
           return (
-            <MessageResponse key={`${message.id}-text-${i}`}>
+            <MessageResponse
+              key={`${message.id}-text-${i}`}
+              isAnimating={isLastTextPart}
+            >
               {part.text}
             </MessageResponse>
           );
