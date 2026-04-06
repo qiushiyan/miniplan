@@ -49,7 +49,13 @@ function getLayoutedElements(
   return { nodes: layoutedNodes, edges };
 }
 
-export function AONDiagram({ schedule }: { schedule: Schedule | null }) {
+export function AONDiagram({
+  schedule,
+  highlightedIds = new Set(),
+}: {
+  schedule: Schedule | null;
+  highlightedIds?: Set<string>;
+}) {
   const { nodes, edges } = useMemo(() => {
     if (!schedule) return { nodes: [], edges: [] };
 
@@ -70,6 +76,7 @@ export function AONDiagram({ schedule }: { schedule: Schedule | null }) {
         lf: a.lf,
         totalFloat: a.float,
         isCritical: criticalSet.has(a.id),
+        isHighlighted: highlightedIds.has(a.id),
       },
     }));
 
@@ -92,22 +99,28 @@ export function AONDiagram({ schedule }: { schedule: Schedule | null }) {
         type: "smoothstep",
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: isCriticalEdge ? "#ef4444" : "#94a3b8",
+          color: isCriticalEdge
+            ? "var(--color-destructive)"
+            : "var(--color-muted-foreground)",
         },
         style: {
-          stroke: isCriticalEdge ? "#ef4444" : "#94a3b8",
+          stroke: isCriticalEdge
+            ? "var(--color-destructive)"
+            : "var(--color-muted-foreground)",
           strokeWidth: isCriticalEdge ? 2.5 : 1.5,
         },
       };
     });
 
     return getLayoutedElements(rawNodes, rawEdges);
-  }, [schedule]);
+  }, [schedule, highlightedIds]);
 
   if (!schedule) return null;
 
+  const ariaLabel = `Activity-on-Node network diagram. ${schedule.activities.length} activities. Critical path: ${schedule.criticalPath.join(", ")}. Project duration: ${schedule.projectDuration} days.`;
+
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full" role="img" aria-label={ariaLabel}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

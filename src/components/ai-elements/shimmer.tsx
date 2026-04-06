@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 import type { MotionProps } from "motion/react";
 import { motion } from "motion/react";
 import type { CSSProperties, ElementType, JSX } from "react";
@@ -38,6 +39,7 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
+  const prefersReducedMotion = useReducedMotion();
   const MotionComponent = getMotionComponent(
     Component as keyof JSX.IntrinsicElements
   );
@@ -46,6 +48,14 @@ const ShimmerComponent = ({
     () => (children?.length ?? 0) * spread,
     [children, spread]
   );
+
+  if (prefersReducedMotion) {
+    return (
+      <Component className={cn("text-muted-foreground", className)}>
+        {children}
+      </Component>
+    );
+  }
 
   return (
     <MotionComponent

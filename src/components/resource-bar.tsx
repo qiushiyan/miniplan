@@ -38,13 +38,24 @@ function computeResourceUsage(schedule: Schedule): ResourceUsage[] {
   });
 }
 
-export function ResourceBar({ schedule }: { schedule: Schedule | null }) {
+export function ResourceBar({
+  schedule,
+  highlightedIds = new Set(),
+}: {
+  schedule: Schedule | null;
+  highlightedIds?: Set<string>;
+}) {
   if (!schedule || schedule.projectDuration === 0) return null;
 
   const usages = computeResourceUsage(schedule);
+  const hasHighlight = highlightedIds.size > 0;
 
   return (
-    <div className="space-y-3">
+    <div
+      className={`space-y-3 rounded-lg transition-[box-shadow] duration-1000 ease-out ${hasHighlight ? "ring-2 ring-primary/50 p-3 -m-3 motion-reduce:ring-0" : ""}`}
+      role="region"
+      aria-label="Resource usage chart"
+    >
       <h3 className="text-sm font-medium text-muted-foreground">
         Resource Usage
       </h3>
@@ -69,7 +80,7 @@ export function ResourceBar({ schedule }: { schedule: Schedule | null }) {
                     title={`Day ${d.day}: ${d.used}/${usage.available}`}
                   >
                     <div
-                      className={`w-full transition-all ${
+                      className={`w-full transition-[background-color] ${
                         d.overAllocated
                           ? "bg-red-500"
                           : d.used > 0
@@ -82,15 +93,12 @@ export function ResourceBar({ schedule }: { schedule: Schedule | null }) {
                 );
               })}
             </div>
-            {/* Capacity line */}
-            <div className="relative h-0">
+            {/* Capacity line — positioned relative to bar container above */}
+            <div className="pointer-events-none relative -mt-6 h-6">
               <div
-                className="absolute border-t border-dashed border-zinc-400 dark:border-zinc-500"
+                className="absolute left-0 right-0 border-t border-dashed border-zinc-400 dark:border-zinc-500"
                 style={{
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  transform: `translateY(-${(usage.available / maxVal) * 24}px)`,
+                  bottom: `${(usage.available / maxVal) * 100}%`,
                 }}
               />
             </div>

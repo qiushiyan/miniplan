@@ -21,31 +21,6 @@ import { cloneSchedule } from "../schedule/engine";
 import { executeCode } from "./execution";
 import { SDK_FUNCTION_NAMES } from "../schedule/sdk";
 
-/** Format a schedule snapshot for the model to read */
-function formatScheduleSnapshot(schedule: Schedule) {
-  return {
-    projectDuration: schedule.projectDuration,
-    criticalPath: schedule.criticalPath,
-    activities: schedule.activities.map((a) => ({
-      id: a.id,
-      name: a.name,
-      duration: a.duration,
-      es: a.es,
-      ef: a.ef,
-      ls: a.ls,
-      lf: a.lf,
-      float: a.float,
-      resources: a.resources,
-    })),
-    dependencies: schedule.dependencies.map((d) => ({
-      from: d.fromId,
-      to: d.toId,
-    })),
-    resources: schedule.resources,
-    constraints: schedule.constraints,
-  };
-}
-
 /** Compute a diff between two schedule snapshots */
 function computeDiff(before: Schedule, after: Schedule) {
   const changes: ExecutionArtifact["changedActivities"] = [];
@@ -128,8 +103,7 @@ export const scheduleTools = {
       "Read the current schedule state. Call this before any modification to see the latest activities, CPM values, dependencies, resources, and critical path. Also use this to answer informational queries.",
     inputSchema: z.object({}),
     execute: async () => {
-      const schedule = getCurrentSchedule();
-      return formatScheduleSnapshot(schedule);
+      return getCurrentSchedule();
     },
   }),
 
@@ -361,7 +335,7 @@ export const scheduleTools = {
         success: true,
         message: nudges.length > 0 ? nudges.join(" ") : "Change applied successfully. Summarize the results for the user.",
         artifact,
-        schedule: formatScheduleSnapshot(after),
+        schedule: after,
       };
     },
   }),
@@ -382,7 +356,7 @@ export const scheduleTools = {
       return {
         success: true,
         message: "Last change undone. Inform the user what was restored.",
-        schedule: formatScheduleSnapshot(restored),
+        schedule: restored,
       };
     },
   }),

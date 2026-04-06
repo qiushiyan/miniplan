@@ -36,7 +36,7 @@ const DEFAULT_SUGGESTIONS = [
 ];
 
 type ChatPanelProps = {
-  onScheduleUpdate: (schedule: Schedule) => void;
+  onScheduleUpdate: (schedule: Schedule, changedActivityIds?: string[]) => void;
 };
 
 export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
@@ -69,7 +69,22 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
             part.type === "tool-undoLastChange")
         ) {
           syncedToolCalls.current.add(part.toolCallId);
-          onScheduleUpdate(output.schedule as Schedule);
+
+          // Type guard: verify schedule shape before trusting it
+          const s = output.schedule as Record<string, unknown>;
+          if (
+            !Array.isArray(s.activities) ||
+            !Array.isArray(s.dependencies)
+          ) {
+            continue;
+          }
+
+          // Extract changed activity IDs from execution artifact for highlight animation
+          const artifact = output.artifact as
+            | { changedActivities?: { id: string }[] }
+            | undefined;
+          const changedIds = artifact?.changedActivities?.map((c) => c.id);
+          onScheduleUpdate(s as unknown as Schedule, changedIds);
         }
       }
     }
@@ -167,11 +182,11 @@ export function ChatPanel({ onScheduleUpdate }: ChatPanelProps) {
       </Conversation>
 
       <div className="border-t p-4">
-        {/* Suggestion area above input */}
+        {/* Suggestion area above input — min-height prevents layout shift */}
         {messages.length > 0 && status === "ready" && (
-          <div className="mx-auto mb-2 max-w-2xl">
+          <div className="mx-auto mb-2 min-h-[52px] max-w-2xl">
             {suggestionsLoading && suggestions.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-1.5 text-xs text-muted-foreground">
+              <div className="flex min-h-[52px] items-center justify-center gap-2 text-xs text-muted-foreground">
                 <Spinner className="size-3" />
                 <span>Planning next steps...</span>
               </div>
@@ -301,7 +316,7 @@ function SuggestionButtons({
         <button
           key={suggestion}
           type="button"
-          className="rounded-full border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          className="min-h-[44px] rounded-full border px-4 py-2 text-xs text-muted-foreground transition-[background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 [@media(hover:hover)]:hover:bg-muted"
           onClick={() => onClick(suggestion)}
         >
           {suggestion}
